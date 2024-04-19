@@ -363,7 +363,24 @@ async fn main() {
 		Some(&smallchan.source),
 		MEDCHAN_AMT
 	).expect("we know this channel exists in ln_10");
+
+	/* Get firstchan and lastchan.  */
+	let client0_nodeid = get_client_nodeid(&mut client0)
+		.await;
+	let firstchan = finder.search(
+		Some(&client0_nodeid),
+		Some(&target),
+		16777215
+	).expect("we made this channel");
+	let lastchan = finder.search(
+		Some(&target),
+		Some(&client0_nodeid),
+		16777215
+	).expect("we made this channel");
+
+	println!("firstchan = {:#?}", firstchan);
 	println!("bigchan = {:#?}", bigchan);
 	println!("medchan = {:#?}", medchan);
 	println!("smallchan = {:#?}", smallchan);
+	println!("lastchan = {:#?}", lastchan);
 }
