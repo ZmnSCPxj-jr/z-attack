@@ -2,6 +2,7 @@ use hashes::sha2::sha256;
 use hex;
 use rand;
 use std::process::Command;
+use std::time::Duration;
 use tokio;
 use tonic_lnd;
 use tonic_lnd::Client;
@@ -126,6 +127,13 @@ async fn keysend( source_client: &mut Client
 	println!("keysend: {:#?}", result);
 }
 
+/////////////////////////////////////////////////////////////////
+async fn sleep(secs: u64) {
+	println!("Sleeping for {secs} seconds...");
+	tokio::time::sleep(Duration::new(secs, 0))
+		.await;
+}
+
 #[tokio::main]
 async fn main() {
 	let mut args = std::env::args_os();
@@ -160,25 +168,23 @@ async fn main() {
 	setup_channels(&mut client0, &mut client1, target.clone())
 		.await;
 
-	/* Step 1: spend big funds from 0-> target -> 1.  */
+	/* Step 1: spend big funds from 0-> target -> 1 and back.  */
+	/* Seed client1 with some funds first.  */
 	keysend( &mut client0
 	       , &mut client1
 	       , 1000000
 	       ).await;
-	keysend( &mut client0
-	       , &mut client1
-	       , 1000000
-	       ).await;
-	keysend( &mut client0
-	       , &mut client1
-	       , 1000000
-	       ).await;
-	keysend( &mut client0
-	       , &mut client1
-	       , 1000000
-	       ).await;
-	keysend( &mut client0
-	       , &mut client1
-	       , 1000000
-	       ).await;
+	sleep(10).await;
+	for _ in 0..100 {
+		/* Swap funds back and forth to build our reputation... */
+		keysend( &mut client0
+		       , &mut client1
+		       , 1000000
+		       ).await;
+		keysend( &mut client1
+		       , &mut client0
+		       , 1000000
+		       ).await;
+		sleep(10).await;
+	}
 }
