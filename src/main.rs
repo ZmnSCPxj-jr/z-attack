@@ -10,7 +10,7 @@ async fn setup_channel0(client0: &mut Client, target: Vec<u8>) {
 	let mut chan0target = OpenChannelRequest::default();
 	chan0target.node_pubkey = target;
 	chan0target.private = false;
-	chan0target.local_funding_amount = 1250000000;
+	chan0target.local_funding_amount = 16777215;
 
 	let result = client0.lightning()
 		.open_channel_sync(chan0target)
@@ -24,8 +24,8 @@ async fn setup_channel1(client1: &mut Client, target: Vec<u8>) {
 	let mut chan1target = OpenChannelRequest::default();
 	chan1target.node_pubkey = target;
 	chan1target.private = false;
-	chan1target.local_funding_amount = 1250000000;
-	chan1target.push_sat = 1200000000;
+	chan1target.local_funding_amount = 16777215;
+	chan1target.push_sat = 16000000;
 
 	let result = client1.lightning()
 		.open_channel_sync(chan1target)
