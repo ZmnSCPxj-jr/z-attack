@@ -6,7 +6,16 @@ use tonic_lnd::Client;
 use tonic_lnd::lnrpc::*;
 
 async fn setup_channel0(client0: &mut Client, target: Vec<u8>) {
-	/* TODO: check if channels already exist.  */
+	let channels = client0.lightning()
+		.list_channels(ListChannelsRequest::default())
+		.await
+		.expect("failed to list channels");
+	println!("listchannels: {:#?}", channels);
+	if channels.into_inner().channels.len() > 0 {
+		println!("Client 0 has channels, assuming we already opened!");
+		return;
+	}
+
 	let mut chan0target = OpenChannelRequest::default();
 	chan0target.node_pubkey = target;
 	chan0target.private = false;
@@ -19,6 +28,16 @@ async fn setup_channel0(client0: &mut Client, target: Vec<u8>) {
 	println!("channel 0<->target: {:#?}", result);
 }
 async fn setup_channel1(client1: &mut Client, target: Vec<u8>) {
+	let channels = client1.lightning()
+		.list_channels(ListChannelsRequest::default())
+		.await
+		.expect("failed to list channels");
+	println!("listchannels: {:#?}", channels);
+	if channels.into_inner().channels.len() > 0 {
+		println!("Client 0 has channels, assuming we already opened!");
+		return;
+	}
+
 	/* NOTE: this is us "buying" a channel from the target
 	 * node, e.g. JIT channel.  */
 	let mut chan1target = OpenChannelRequest::default();
