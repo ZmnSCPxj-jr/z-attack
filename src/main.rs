@@ -15,6 +15,10 @@ async fn main() {
 	let cert1 = args.next().expect("no cert0");
 	let macr1 = args.next().expect("no macr0");
 
+	/* Add https:// and :1009 */
+	let addr0 = "https://".to_owned() + &addr0 + ":1009";
+	let addr1 = "https://".to_owned() + &addr1 + ":1009";
+
 	let mut client0 = tonic_lnd::connect(addr0, cert0, macr0)
 		.await
 		.expect("failed to connect to client 0");
