@@ -1,11 +1,11 @@
 use hex;
-//use std::sync::{Arc, Mutex};
+use std::process::Command;
 use tokio;
 use tonic_lnd;
 use tonic_lnd::Client;
 use tonic_lnd::lnrpc::*;
 
-async fn setup_channel0(client0: &mut Client, target: Vec<u8>) {
+async fn setup_channel0(client0: &mut Client, target: Vec<u8>) -> bool {
 	let channels = client0.lightning()
 		.list_channels(ListChannelsRequest::default())
 		.await
@@ -13,7 +13,7 @@ async fn setup_channel0(client0: &mut Client, target: Vec<u8>) {
 	println!("listchannels: {:#?}", channels);
 	if channels.into_inner().channels.len() > 0 {
 		println!("Client 0 has channels, assuming we already opened!");
-		return;
+		return false;
 	}
 
 	let mut chan0target = OpenChannelRequest::default();
@@ -26,16 +26,17 @@ async fn setup_channel0(client0: &mut Client, target: Vec<u8>) {
 		.await
 		.expect("failed to open");
 	println!("channel 0<->target: {:#?}", result);
+	return true;
 }
-async fn setup_channel1(client1: &mut Client, target: Vec<u8>) {
+async fn setup_channel1(client1: &mut Client, target: Vec<u8>) -> bool {
 	let channels = client1.lightning()
 		.list_channels(ListChannelsRequest::default())
 		.await
 		.expect("failed to list channels");
 	println!("listchannels: {:#?}", channels);
 	if channels.into_inner().channels.len() > 0 {
-		println!("Client 0 has channels, assuming we already opened!");
-		return;
+		println!("Client 1 has channels, assuming we already opened!");
+		return false;
 	}
 
 	/* NOTE: this is us "buying" a channel from the target
@@ -51,13 +52,28 @@ async fn setup_channel1(client1: &mut Client, target: Vec<u8>) {
 		.await
 		.expect("failed to open");
 	println!("channel 1<->target: {:#?}", result);
+	return true;
+}
+fn mine_blocks() {
+	let output = Command::new("bitcoin-cli")
+		.arg("-generate")
+		.arg("6")
+		.output()
+		.expect("Blocks mined");
+	println!("Generate: {:#?}", output);
 }
 async fn setup_channels( client0: &mut Client
 		       , client1: &mut Client
 		       , target: Vec<u8>
 		       ) {
-	setup_channel0(client0, target.clone()).await;
-	setup_channel1(client1, target.clone()).await;
+	let opened0 = setup_channel0(client0, target.clone()).await;
+	let opened1 = setup_channel1(client1, target.clone()).await;
+	/* If either client opened, mine blocks.
+	 * Otherwise, do nothing.
+	 */
+	if opened0 || opened1 {
+		mine_blocks();
+	}
 }
 
 #[tokio::main]
