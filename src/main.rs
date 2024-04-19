@@ -9,6 +9,22 @@ use tonic_lnd::Client;
 use tonic_lnd::lnrpc::*;
 use tonic_lnd::routerrpc::*;
 
+async fn wait_for_sync(client: &mut Client) {
+	let mut ok = false;
+	while !ok {
+		let info = client.lightning()
+			.get_info(GetInfoRequest{})
+			.await
+			.expect("failed to get info")
+			.into_inner();
+		ok = info.synced_to_chain && info.synced_to_graph;
+		if !ok {
+			println!("Client {:#?} not synced, waiting...", info.identity_pubkey);
+			sleep(1).await;
+		}
+	}
+}
+
 async fn setup_channel0(client0: &mut Client, target: Vec<u8>) -> bool {
 	let channels = client0.lightning()
 		.list_channels(ListChannelsRequest::default())
@@ -19,6 +35,9 @@ async fn setup_channel0(client0: &mut Client, target: Vec<u8>) -> bool {
 		println!("Client 0 has channels, assuming we already opened!");
 		return false;
 	}
+
+	wait_for_sync(client0)
+		.await;
 
 	let mut chan0target = OpenChannelRequest::default();
 	chan0target.node_pubkey = target;
@@ -42,6 +61,9 @@ async fn setup_channel1(client1: &mut Client, target: Vec<u8>) -> bool {
 		println!("Client 1 has channels, assuming we already opened!");
 		return false;
 	}
+
+	wait_for_sync(client1)
+		.await;
 
 	/* NOTE: this is us "buying" a channel from the target
 	 * node, e.g. JIT channel.  */
