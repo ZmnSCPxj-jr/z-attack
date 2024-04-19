@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 tonic_lnd = { git = "https://github.com/sr-gi/tonic_lnd", branch="2024-04-attackathon-rpc", features=["lightningrpc", "routerrpc"], package="fedimint-tonic-lnd"}
 tokio = { version = "1", features = ["full"] }
+hex = { version = "0.4.3" }

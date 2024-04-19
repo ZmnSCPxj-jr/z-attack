@@ -1308,5 +1308,6 @@ name = "z-attack"
 version = "0.1.0"
 dependencies = [
  "fedimint-tonic-lnd",
+ "hex",
  "tokio",
 ]
