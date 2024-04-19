@@ -7,5 +7,7 @@ edition = "2021"
 
 [dependencies]
 tonic_lnd = { git = "https://github.com/sr-gi/tonic_lnd", branch="2024-04-attackathon-rpc", features=["lightningrpc", "routerrpc"], package="fedimint-tonic-lnd"}
+rand = { version = "0.8.5" }
+hashes = { version = "0.1.9" }
 tokio = { version = "1", features = ["full"] }
 hex = { version = "0.4.3" }

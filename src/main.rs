@@ -1,9 +1,12 @@
+use hashes::sha2::sha256;
 use hex;
+use rand;
 use std::process::Command;
 use tokio;
 use tonic_lnd;
 use tonic_lnd::Client;
 use tonic_lnd::lnrpc::*;
+use tonic_lnd::routerrpc::*;
 
 async fn setup_channel0(client0: &mut Client, target: Vec<u8>) -> bool {
 	let channels = client0.lightning()
@@ -76,6 +79,53 @@ async fn setup_channels( client0: &mut Client
 	}
 }
 
+/////////////////////////////////////////////////////////////////
+
+async fn get_client_nodeid(client: &mut Client) -> Vec<u8> {
+	let info = client.lightning()
+		.get_info(GetInfoRequest{})
+		.await
+		.expect("failed to get info")
+		.into_inner();
+	hex::decode(info.identity_pubkey).expect("identity_pubkey must be hex???")
+}
+fn just_sha256(inp: &[u8]) -> [u8; 32] {
+	let mut buf: [u8; 32] = [0; 32];
+	buf.clone_from_slice(&sha256::hash(inp).into_bytes());
+	buf
+}
+async fn keysend( source_client: &mut Client
+		, dest_client: &mut Client
+		, amt: i64
+		) {
+	const KEYSEND_KEY: u64 = 5482373484;
+
+	let dest_nodeid = get_client_nodeid(dest_client)
+		.await;
+	let preimage: [u8; 32] = rand::random();
+	let hash = just_sha256(&preimage);
+	println!("keysend: preimage = {:#?}, hash = {:#?}", preimage, hash);
+
+	let mut req = SendPaymentRequest::default();
+	req.dest = dest_nodeid;
+	req.dest_custom_records.insert(KEYSEND_KEY, preimage.to_vec());
+	req.amt = amt;
+	req.payment_hash = hash.to_vec();
+	req.timeout_seconds = 10;
+	req.fee_limit_msat = i64::max_value();
+
+	let rsp = source_client.router()
+		.send_payment_v2(req)
+		.await
+		.expect("failed to keysend!");
+	let mut stream = rsp.into_inner();
+	let result = stream.message()
+		.await
+		.expect("failed to peek message from keysend")
+		.expect("no message from keysend");
+	println!("keysend: {:#?}", result);
+}
+
 #[tokio::main]
 async fn main() {
 	let mut args = std::env::args_os();
@@ -106,8 +156,29 @@ async fn main() {
 		.await
 		.expect("failed to connect to client 1");
 
-	/* Step 1: set up channels from 0 -> target -> 1.  */
+	/* Step 0: set up channels from 0 -> target -> 1.  */
 	setup_channels(&mut client0, &mut client1, target.clone())
 		.await;
 
+	/* Step 1: spend big funds from 0-> target -> 1.  */
+	keysend( &mut client0
+	       , &mut client1
+	       , 1000000
+	       ).await;
+	keysend( &mut client0
+	       , &mut client1
+	       , 1000000
+	       ).await;
+	keysend( &mut client0
+	       , &mut client1
+	       , 1000000
+	       ).await;
+	keysend( &mut client0
+	       , &mut client1
+	       , 1000000
+	       ).await;
+	keysend( &mut client0
+	       , &mut client1
+	       , 1000000
+	       ).await;
 }
