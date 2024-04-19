@@ -26,7 +26,7 @@ export TARGET=$(cat target.txt)
 # - Clone your repo
 # - Install your program
 # - Run it with the certs/macaroons provided above
-apt install protobuf-compiler
+yes | apt install protobuf-compiler
 git clone https://github.com/ZmnSCPxj-jr/z-attack
 cd z-attack
 git reset --hard
