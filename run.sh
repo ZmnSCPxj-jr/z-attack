@@ -27,9 +27,10 @@ export TARGET=$(cat target.txt)
 # - Install your program
 # - Run it with the certs/macaroons provided above
 yes | apt install protobuf-compiler
+./connect_nodes.sh
+./fund.sh
 git clone https://github.com/ZmnSCPxj-jr/z-attack
 cd z-attack
 git reset --hard
 git pull
-./connect_nodes.sh
 RUST_BACKTRACE=1 cargo run ${LND_0_RPCSERVER} ${LND_0_CERT} ${LND_0_MACAROON} ${LND_1_RPCSERVER} ${LND_1_CERT} ${LND_1_MACAROON} ${TARGET}
